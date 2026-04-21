@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dekoduj obrazek</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #000;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+  }
+
+  .card {
+    background: #111;
+    border-radius: 14px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 360px;
+    box-shadow: 0 2px 24px rgba(0,0,0,0.5);
+  }
+
+  h1 {
+    font-size: 1rem;
+    font-weight: 500;
+    color: #eee;
+    margin-bottom: 1.4rem;
+  }
+
+  /* --- HASŁO --- */
+  #password-screen { display: flex; flex-direction: column; gap: 0.8rem; }
+  #main-screen { display: none; }
+
+  #pwd-input {
+    width: 100%;
+    padding: 0.75rem;
+    background: #1a1a1a;
+    border: 1.5px solid #333;
+    border-radius: 8px;
+    color: #eee;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #pwd-input:focus { border-color: #666; }
+  #pwd-input.shake {
+    animation: shake 0.3s;
+    border-color: #d94040;
+  }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25%      { transform: translateX(-6px); }
+    75%      { transform: translateX(6px); }
+  }
+  #pwd-error { font-size: 0.78rem; color: #d94040; min-height: 1.1em; text-align: center; }
+
+  /* --- GŁÓWNY --- */
+  .drop-zone {
+    border: 1.5px dashed #333;
+    border-radius: 8px;
+    padding: 1.8rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    position: relative;
+    transition: border-color 0.15s, background 0.15s;
+    background: #1a1a1a;
+  }
+  .drop-zone:hover, .drop-zone.over { border-color: #666; background: #222; }
+  .drop-zone input {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 1.5rem; margin-bottom: 0.45rem; }
+  .drop-text { font-size: 0.82rem; color: #555; }
+  .drop-text strong { display: block; color: #aaa; font-weight: 500; margin-bottom: 0.15rem; font-size: 0.88rem; }
+
+  #preview-img {
+    width: 100%; max-height: 130px; object-fit: contain; border-radius: 6px;
+    display: none; margin-top: 1rem; image-rendering: pixelated; background: #1a1a1a;
+  }
+
+  .btn {
+    display: block; width: 100%; margin-top: 1rem; padding: 0.75rem;
+    background: #fff; color: #000; border: none; border-radius: 8px;
+    font-family: 'DM Sans', sans-serif; font-size: 0.9rem; font-weight: 500;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .btn:hover:not(:disabled) { background: #ddd; }
+  .btn:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
+
+  #status { margin-top: 0.9rem; font-size: 0.78rem; color: #555; text-align: center; min-height: 1.1em; }
+  #status.ok  { color: #3a9e6a; }
+  #status.err { color: #d94040; }
+
+  audio { display: none; width: 100%; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Dekoduj obrazek</h1>
+
+  <div id="password-screen">
+    <input type="password" id="pwd-input" placeholder="Hasło..." autofocus>
+    <button class="btn" id="pwd-btn">Wejdź</button>
+    <div id="pwd-error"></div>
+  </div>
+
+  <div id="main-screen">
+    <div class="drop-zone" id="dropZone">
+      <input type="file" accept="image/png" id="fileInput">
+      <div class="drop-icon">🖼️</div>
+      <div class="drop-text">
+        <strong>Wybierz plik PNG</strong>
+        lub przeciągnij tutaj
+      </div>
+    </div>
+    <img id="preview-img" alt="">
+    <button class="btn" id="decodeBtn" disabled>Dekoduj</button>
+    <div id="status">Wgraj obrazek PNG</div>
+    <audio id="player" controls></audio>
+  </div>
+</div>
+
+<script>
+// ========================
+// ZMIEŃ HASŁO TUTAJ:
+const HASLO = 'ziemniak';
+// ========================
+
+const SAMPLE_RATE = 22050;
+
+// Hasło
+const pwdInput  = document.getElementById('pwd-input');
+const pwdBtn    = document.getElementById('pwd-btn');
+const pwdError  = document.getElementById('pwd-error');
+const pwdScreen = document.getElementById('password-screen');
+const mainScreen = document.getElementById('main-screen');
+
+function sprawdzHaslo() {
+  if (pwdInput.value === HASLO) {
+    pwdScreen.style.display = 'none';
+    mainScreen.style.display = 'block';
+  } else {
+    pwdError.textContent = 'Złe hasło';
+    pwdInput.classList.remove('shake');
+    void pwdInput.offsetWidth;
+    pwdInput.classList.add('shake');
+    pwdInput.value = '';
+    setTimeout(() => pwdInput.classList.remove('shake'), 400);
+  }
+}
+
+pwdBtn.addEventListener('click', sprawdzHaslo);
+pwdInput.addEventListener('keydown', e => { if (e.key === 'Enter') sprawdzHaslo(); });
+
+// Dekoder
+const fileInput = document.getElementById('fileInput');
+const dropZone  = document.getElementById('dropZone');
+const decodeBtn = document.getElementById('decodeBtn');
+const statusEl  = document.getElementById('status');
+const preview   = document.getElementById('preview-img');
+const player    = document.getElementById('player');
+
+let imageData = null;
+let audioURL  = null;
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === 'image/png') loadFile(f);
+  else setStatus('Tylko pliki PNG!', 'err');
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+decodeBtn.addEventListener('click', decode);
+
+function setStatus(msg, cls) {
+  statusEl.textContent = msg;
+  statusEl.className = cls || '';
+}
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width; canvas.height = img.height;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      imageData = canvas.getContext('2d').getImageData(0, 0, img.width, img.height);
+      preview.src = e.target.result;
+      preview.style.display = 'block';
+      decodeBtn.disabled = false;
+      player.style.display = 'none';
+      setStatus('Gotowe – kliknij Dekoduj');
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function decode() {
+  if (!imageData) return;
+  decodeBtn.disabled = true;
+  setStatus('Dekodowanie...');
+  setTimeout(() => {
+    const px = imageData.data;
+    const pcm = new Float32Array(Math.floor(px.length / 4) * 3);
+    let s = 0;
+    for (let i = 0; i < px.length; i += 4) {
+      pcm[s++] = (px[i]   - 128) / 128;
+      pcm[s++] = (px[i+1] - 128) / 128;
+      pcm[s++] = (px[i+2] - 128) / 128;
+    }
+    const wav = encodeWAV(pcm, SAMPLE_RATE);
+    if (audioURL) URL.revokeObjectURL(audioURL);
+    audioURL = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }));
+    player.src = audioURL;
+    player.style.display = 'block';
+    setStatus('Gotowe!', 'ok');
+    decodeBtn.disabled = false;
+  }, 20);
+}
+
+function encodeWAV(pcm, rate) {
+  const buf = new ArrayBuffer(44 + pcm.length * 2);
+  const v = new DataView(buf);
+  let o = 0;
+  const str = s => { for (let i = 0; i < s.length; i++) v.setUint8(o++, s.charCodeAt(i)); };
+  str('RIFF'); v.setUint32(o, 36 + pcm.length * 2, true); o += 4;
+  str('WAVEfmt '); v.setUint32(o, 16, true); o += 4;
+  v.setUint16(o, 1, true); o += 2;
+  v.setUint16(o, 1, true); o += 2;
+  v.setUint32(o, rate, true); o += 4;
+  v.setUint32(o, rate * 2, true); o += 4;
+  v.setUint16(o, 2, true); o += 2;
+  v.setUint16(o, 16, true); o += 2;
+  str('data'); v.setUint32(o, pcm.length * 2, true); o += 4;
+  for (let i = 0; i < pcm.length; i++) {
+    const s = Math.max(-1, Math.min(1, pcm[i]));
+    v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true); o += 2;
+  }
+  return buf;
+}
+</script>
+</body>
+</html>
